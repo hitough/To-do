@@ -1,0 +1,666 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Görev Takip Uygulaması</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,700;1,400&family=DM+Serif+Display&display=swap" rel="stylesheet">
+    <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-firestore-compat.js"></script>
+    <style>
+        :root {
+            --bg-color: #f5f2eb;
+            --surface: #ffffff;
+            --text-main: #333333;
+            --text-muted: #666666;
+            --primary: #4a4a4a;
+            --radius: 12px;
+            
+            --high-color: #c84b2f;
+            --med-color: #d4873a;
+            --low-color: #5a8a5e;
+            
+            --font-heading: 'DM Serif Display', serif;
+            --font-body: 'DM Sans', sans-serif;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            font-family: var(--font-body);
+            line-height: 1.5;
+            padding: 2rem 1rem;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        /* Typography */
+        h1, h2, h3 {
+            font-family: var(--font-heading);
+            font-weight: 400;
+        }
+        h1 { font-size: 2.5rem; margin-bottom: 1rem; }
+        
+        /* Utility */
+        .hidden { display: none !important; }
+        .text-overdue { color: var(--high-color); font-weight: bold; }
+        .completed-text { text-decoration: line-through; color: var(--text-muted); }
+        
+        /* Config View */
+        #config-view, #app-view {
+            background: var(--surface);
+            padding: 2rem;
+            border-radius: var(--radius);
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+        }
+
+        .form-group {
+            margin-bottom: 1rem;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 500;
+        }
+
+        input[type="text"], input[type="date"], select, textarea {
+            width: 100%;
+            padding: 0.75rem;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-family: var(--font-body);
+            font-size: 1rem;
+        }
+
+        button {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 8px;
+            font-family: var(--font-body);
+            font-size: 1rem;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+        button:hover { opacity: 0.9; }
+
+        /* App View Header */
+        .header-actions {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 2rem;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+        
+        .stats {
+            font-size: 0.9rem;
+            color: var(--text-muted);
+            background: rgba(0,0,0,0.05);
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+        }
+
+        .filters {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .filter-btn {
+            background: transparent;
+            color: var(--text-muted);
+            padding: 0.5rem 1rem;
+            border: 1px solid #ddd;
+            border-radius: 20px;
+        }
+        .filter-btn.active {
+            background: var(--text-main);
+            color: white;
+            border-color: var(--text-main);
+        }
+
+        /* Task Add Form */
+        .add-task-form {
+            background: #faf8f5;
+            padding: 1.5rem;
+            border-radius: var(--radius);
+            margin-bottom: 2rem;
+            border: 1px solid #eee;
+        }
+        
+        .add-task-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+        .full-width { grid-column: 1 / -1; }
+
+        /* Task List */
+        .priority-group { margin-bottom: 2rem; }
+        .priority-group h3 {
+            margin-bottom: 1rem;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 0.5rem;
+            color: var(--text-muted);
+            font-family: var(--font-body);
+            font-weight: 500;
+            font-size: 1.1rem;
+        }
+        .priority-group-high h3 { color: var(--high-color); }
+        .priority-group-med h3 { color: var(--med-color); }
+        .priority-group-low h3 { color: var(--low-color); }
+        
+        .task-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+
+        /* Task Card */
+        @keyframes slideIn {
+            from { transform: translateY(-10px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+
+        .task-card {
+            background: var(--surface);
+            border: 1px solid #eee;
+            padding: 1.25rem;
+            border-radius: var(--radius);
+            display: flex;
+            gap: 1rem;
+            align-items: flex-start;
+            animation: slideIn 200ms ease-out forwards;
+            transition: box-shadow 0.2s, background-color 0.2s;
+            position: relative;
+        }
+        
+        .task-card:hover {
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+        }
+        
+        .task-card.completed {
+            opacity: 0.6;
+            background: #f9f9f9;
+        }
+
+        .task-checkbox {
+            appearance: none;
+            width: 24px;
+            height: 24px;
+            border: 2px solid #ccc;
+            border-radius: 50%;
+            cursor: pointer;
+            margin-top: 2px;
+            flex-shrink: 0;
+            display: grid;
+            place-content: center;
+        }
+        .task-checkbox::before {
+            content: "";
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: var(--primary);
+            transform: scale(0);
+            transition: transform 0.1s ease-in-out;
+        }
+        .task-checkbox:checked::before {
+            transform: scale(1);
+        }
+
+        .task-content { flex-grow: 1; min-width: 0; }
+        
+        .task-title {
+            font-family: var(--font-heading);
+            font-size: 1.25rem;
+            margin-bottom: 0.25rem;
+            word-wrap: break-word;
+        }
+
+        .task-meta {
+            display: flex;
+            gap: 0.75rem;
+            font-size: 0.85rem;
+            align-items: center;
+            margin-bottom: 0.5rem;
+            flex-wrap: wrap;
+        }
+
+        .badge {
+            padding: 0.2rem 0.6rem;
+            border-radius: 12px;
+            color: white;
+            font-weight: 500;
+        }
+        .badge-high { background-color: var(--high-color); }
+        .badge-med { background-color: var(--med-color); }
+        .badge-low { background-color: var(--low-color); }
+
+        .task-note {
+            font-style: italic;
+            color: var(--text-muted);
+            font-size: 0.95rem;
+            word-wrap: break-word;
+        }
+
+        .btn-delete {
+            background: transparent;
+            color: #ccc;
+            padding: 0.5rem;
+            border-radius: 5%;
+            font-size: 1rem;
+            line-height: 1;
+            margin-left: auto;
+            flex-shrink: 0;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .btn-delete:hover {
+            color: var(--high-color);
+            background: #fff0ed;
+        }
+
+        /* Toast */
+        .toast {
+            position: fixed;
+            bottom: 2rem;
+            right: 2rem;
+            background: var(--text-main);
+            color: white;
+            padding: 1rem 1.5rem;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            transform: translateY(100px);
+            opacity: 0;
+            transition: transform 0.3s, opacity 0.3s;
+            z-index: 1000;
+        }
+        .toast.show {
+            transform: translateY(0);
+            opacity: 1;
+        }
+
+        @media (max-width: 600px) {
+            body { padding: 1rem 0.5rem; }
+            #config-view, #app-view { padding: 1rem; }
+            .add-task-grid { grid-template-columns: 1fr; }
+            .filters { display: none; } /* Hide tabs on very small screens */
+            .header-actions { flex-direction: column; align-items: flex-start; }
+            h1 { font-size: 2rem; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <!-- Firebase Yapılandırma Ekranı -->
+        <div id="config-view">
+            <h1>Firebase Bağlantısı</h1>
+            <p style="margin-bottom: 1.5rem; color: var(--text-muted)">Uygulamayı kullanmak için Firestore bilgilerinizi girin.</p>
+            
+            <form id="config-form">
+                <div class="form-group">
+                    <label>API Key</label>
+                    <input type="text" id="conf-apiKey" required>
+                </div>
+                <div class="form-group">
+                    <label>Auth Domain</label>
+                    <input type="text" id="conf-authDomain" required>
+                </div>
+                <div class="form-group">
+                    <label>Project ID</label>
+                    <input type="text" id="conf-projectId" required>
+                </div>
+                <div class="form-group">
+                    <label>App ID</label>
+                    <input type="text" id="conf-appId" required>
+                </div>
+                <button type="submit">Bağlan</button>
+            </form>
+        </div>
+
+        <!-- Ana Uygulama -->
+        <div id="app-view" class="hidden">
+            <div class="header-actions">
+                <div>
+                    <h1>Görevlerim</h1>
+                    <div class="stats" id="app-stats">Toplam: 0 | Tamamlanan: 0 | Bekleyen: 0</div>
+                </div>
+                <button type="button" id="btn-logout" style="background: transparent; color: var(--text-muted); border: 1px solid #ddd; padding: 0.4rem 0.8rem;">İptal/Çıkış</button>
+            </div>
+            
+            <div style="margin-bottom: 1.5rem; display: flex; justify-content: space-between; align-items: center;">
+                <div class="filters" id="task-filters">
+                    <button class="filter-btn active" data-filter="all">Tümü</button>
+                    <button class="filter-btn" data-filter="active">Aktif</button>
+                    <button class="filter-btn" data-filter="done">Tamamlanan</button>
+                </div>
+            </div>
+
+            <!-- Görev Ekleme Formu -->
+            <form id="task-form" class="add-task-form">
+                <div class="add-task-grid">
+                    <div class="form-group full-width">
+                        <input type="text" id="task-title" placeholder="Ne yapılması gerekiyor?" required>
+                    </div>
+                    <div class="form-group">
+                        <select id="task-priority">
+                            <option value="high">🔴 Yüksek Öncelik</option>
+                            <option value="med" selected>🟡 Orta Öncelik</option>
+                            <option value="low">🟢 Düşük Öncelik</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <input type="date" id="task-due">
+                    </div>
+                    <div class="form-group full-width" style="margin-bottom: 0;">
+                        <input type="text" id="task-note" placeholder="Not/Açıklama (opsiyonel)">
+                    </div>
+                </div>
+                <button type="submit">Görev Ekle</button>
+            </form>
+
+            <!-- Görev Listeleri (Öncelik Gruplu) -->
+            <div id="tasks-container">
+                <div class="priority-group priority-group-high hidden" id="group-high">
+                    <h3>Yüksek Öncelik</h3>
+                    <div class="task-list" id="list-high"></div>
+                </div>
+                <div class="priority-group priority-group-med hidden" id="group-med">
+                    <h3>Orta Öncelik</h3>
+                    <div class="task-list" id="list-med"></div>
+                </div>
+                <div class="priority-group priority-group-low hidden" id="group-low">
+                    <h3>Düşük Öncelik</h3>
+                    <div class="task-list" id="list-low"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Bildirimi -->
+    <div id="toast" class="toast"></div>
+
+    <script>
+        // --- Durum (State) ---
+        let db = null;
+        let tasksData = [];
+        let currentFilter = 'all'; // all, active, done
+
+        // --- DOM Elementleri ---
+        const configView = document.getElementById('config-view');
+        const appView = document.getElementById('app-view');
+        const configForm = document.getElementById('config-form');
+        
+        const taskForm = document.getElementById('task-form');
+        const listHigh = document.getElementById('list-high');
+        const listMed = document.getElementById('list-med');
+        const listLow = document.getElementById('list-low');
+        const groupHigh = document.getElementById('group-high');
+        const groupMed = document.getElementById('group-med');
+        const groupLow = document.getElementById('group-low');
+        
+        const statsEl = document.getElementById('app-stats');
+        const filtersContainer = document.getElementById('task-filters');
+        const toastEl = document.getElementById('toast');
+        const btnLogout = document.getElementById('btn-logout');
+
+        // --- Başlangıç Kontrolü ---
+        function initApp() {
+            const savedConfig = localStorage.getItem('firebaseConfig');
+            if (savedConfig) {
+                try {
+                    const config = JSON.parse(savedConfig);
+                    connectFirebase(config);
+                } catch (e) {
+                    showConfig();
+                }
+            } else {
+                showConfig();
+            }
+        }
+
+        function showConfig() {
+            configView.classList.remove('hidden');
+            appView.classList.add('hidden');
+        }
+
+        // --- Firebase Bağlantı Mantığı ---
+        configForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const config = {
+                apiKey: document.getElementById('conf-apiKey').value.trim(),
+                authDomain: document.getElementById('conf-authDomain').value.trim(),
+                projectId: document.getElementById('conf-projectId').value.trim(),
+                appId: document.getElementById('conf-appId').value.trim()
+            };
+            
+            localStorage.setItem('firebaseConfig', JSON.stringify(config));
+            connectFirebase(config);
+        });
+
+        btnLogout.addEventListener('click', () => {
+            localStorage.removeItem('firebaseConfig');
+            location.reload();
+        });
+
+        function connectFirebase(config) {
+            try {
+                if (firebase.apps.length === 0) {
+                    firebase.initializeApp(config);
+                }
+                db = firebase.firestore();
+                
+                // Firestore dinlemeye başla
+                listenTasks();
+                
+                // UI geçişi
+                configView.classList.add('hidden');
+                appView.classList.remove('hidden');
+                showToast("Firebase'e bağlanıldı!");
+            } catch (error) {
+                alert("Bağlantı hatası: Lütfen bilgilerinizi kontrol edin.");
+                console.error(error);
+                localStorage.removeItem('firebaseConfig');
+                showConfig();
+            }
+        }
+
+        // --- Firestore Gerçek Zamanlı Dinleme ---
+        function listenTasks() {
+            db.collection('tasks').orderBy('createdAt', 'desc').onSnapshot((snapshot) => {
+                tasksData = [];
+                snapshot.forEach(doc => {
+                    tasksData.push({ id: doc.id, ...doc.data() });
+                });
+                renderTasks();
+                updateStats();
+            }, (error) => {
+                console.error("Dinleme hatası:", error);
+                
+                // Hata Firebase indeksleriyle ilgili olabilir
+                if (error.message.includes('index')) {
+                     alert("Firestore Indeks Hatası: Lütfen Firestore console üzerinde 'createdAt' için indeks oluşturun. Hata detayı konsolda.");
+                } else if (error.code === 'permission-denied') {
+                     showToast("İzin hatası: Test modu kapalı olabilir.");
+                } else {
+                     showToast("Veriler alınırken hata oluştu.");
+                }
+            });
+        }
+
+        // --- Görev İşlemleri ---
+        taskForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const titleEl = document.getElementById('task-title');
+            const prioEl = document.getElementById('task-priority');
+            const dueEl = document.getElementById('task-due');
+            const noteEl = document.getElementById('task-note');
+
+            const newTask = {
+                title: titleEl.value.trim(),
+                priority: prioEl.value,
+                due: dueEl.value || null,
+                note: noteEl.value.trim() || null,
+                done: false,
+                createdAt: firebase.firestore.FieldValue.serverTimestamp()
+            };
+
+            try {
+                await db.collection('tasks').add(newTask);
+                showToast("Görev eklendi.");
+                taskForm.reset();
+                prioEl.value = 'med'; // varsayılan
+            } catch (error) {
+                console.error("Ekleme hatası:", error);
+                showToast("Görev eklenemedi.");
+            }
+        });
+
+        // Global context için method ataması
+        window.toggleTask = async function(id, currentStatus) {
+            try {
+                await db.collection('tasks').doc(id).update({ done: !currentStatus });
+            } catch (error) {
+                console.error("Güncelleme hatası:", error);
+                showToast("Durum güncellenemedi.");
+            }
+        }
+
+        window.deleteTask = async function(id) {
+            if (!confirm("Bu görevi silmek istediğinize emin misiniz?")) return;
+            try {
+                await db.collection('tasks').doc(id).delete();
+                showToast("Görev silindi.");
+            } catch (error) {
+                console.error("Silme hatası:", error);
+                showToast("Silinemedi.");
+            }
+        }
+
+        // --- UI Rendering ---
+        filtersContainer.addEventListener('click', (e) => {
+            if (e.target.classList.contains('filter-btn')) {
+                document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
+                e.target.classList.add('active');
+                currentFilter = e.target.getAttribute('data-filter');
+                renderTasks();
+            }
+        });
+
+        function updateStats() {
+            const total = tasksData.length;
+            const done = tasksData.filter(t => t.done).length;
+            const pending = total - done;
+            statsEl.innerText = `Toplam: ${total} | Tamamlanan: ${done} | Bekleyen: ${pending}`;
+        }
+
+        function escapeHTML(str) {
+            if (!str) return '';
+            return str.replace(/[&<>'"]/g, 
+                tag => ({
+                    '&': '&amp;',
+                    '<': '&lt;',
+                    '>': '&gt;',
+                    "'": '&#39;',
+                    '"': '&quot;'
+                }[tag])
+            );
+        }
+
+        function isOverdue(dueDateStr) {
+            if (!dueDateStr) return false;
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            
+            // dueDateStr "YYYY-MM-DD" formatında gelecektir.
+            const dueParts = dueDateStr.split('-');
+            if(dueParts.length !== 3) return false;
+            const due = new Date(dueParts[0], dueParts[1] - 1, dueParts[2]);
+            return due < today;
+        }
+
+        function createTaskHTML(task) {
+            const escTitle = escapeHTML(task.title);
+            const escNote = escapeHTML(task.note);
+            
+            let badgeClass = 'badge-low';
+            let badgeText = 'Düşük';
+            if (task.priority === 'high') { badgeClass = 'badge-high'; badgeText = 'Yüksek'; }
+            if (task.priority === 'med') { badgeClass = 'badge-med'; badgeText = 'Orta'; }
+
+            const overdue = !task.done && isOverdue(task.due);
+            const dateStr = task.due ? `<span class="${overdue ? 'text-overdue' : ''}">📅 ${task.due} ${overdue ? '(Gecikmiş)' : ''}</span>` : '';
+            const noteStr = escNote ? `<div class="task-note">${escNote}</div>` : '';
+
+            return `
+                <div class="task-card ${task.done ? 'completed' : ''}">
+                    <input type="checkbox" class="task-checkbox" ${task.done ? 'checked' : ''} onchange="toggleTask('${task.id}', ${task.done})">
+                    <div class="task-content">
+                        <div class="task-title ${task.done ? 'completed-text' : ''}">${escTitle}</div>
+                        <div class="task-meta">
+                            <span class="badge ${badgeClass}">${badgeText}</span>
+                            ${dateStr}
+                        </div>
+                        ${noteStr}
+                    </div>
+                    <button class="btn-delete" title="Sil" onclick="deleteTask('${task.id}')">✕ Sil</button>
+                </div>
+            `;
+        }
+
+        function renderTasks() {
+            let filteredTasks = tasksData;
+            
+            if (currentFilter === 'active') {
+                filteredTasks = tasksData.filter(t => !t.done);
+            } else if (currentFilter === 'done') {
+                filteredTasks = tasksData.filter(t => t.done);
+            }
+
+            const highs = filteredTasks.filter(t => t.priority === 'high');
+            const meds = filteredTasks.filter(t => t.priority === 'med');
+            const lows = filteredTasks.filter(t => t.priority === 'low');
+
+            listHigh.innerHTML = highs.map(createTaskHTML).join('');
+            listMed.innerHTML = meds.map(createTaskHTML).join('');
+            listLow.innerHTML = lows.map(createTaskHTML).join('');
+
+            // İçeriği olmayan grupları gizle
+            groupHigh.classList.toggle('hidden', highs.length === 0);
+            groupMed.classList.toggle('hidden', meds.length === 0);
+            groupLow.classList.toggle('hidden', lows.length === 0);
+        }
+
+        // --- Araçlar ---
+        let toastTimeout;
+        function showToast(message) {
+            toastEl.innerText = message;
+            toastEl.classList.add('show');
+            clearTimeout(toastTimeout);
+            toastTimeout = setTimeout(() => {
+                toastEl.classList.remove('show');
+            }, 3000);
+        }
+
+        // Uygulamayı başlat
+        initApp();
+    </script>
+</body>
+</html>
