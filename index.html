@@ -424,6 +424,19 @@
         // --- Başlangıç Kontrolü ---
         function initApp() {
             const savedConfig = localStorage.getItem('firebaseConfig');
+            const lastConfig = localStorage.getItem('lastFirebaseConfig');
+            
+            const configToFill = savedConfig || lastConfig;
+            if(configToFill) {
+                try {
+                    const parsed = JSON.parse(configToFill);
+                    document.getElementById('conf-apiKey').value = parsed.apiKey || '';
+                    document.getElementById('conf-authDomain').value = parsed.authDomain || '';
+                    document.getElementById('conf-projectId').value = parsed.projectId || '';
+                    document.getElementById('conf-appId').value = parsed.appId || '';
+                } catch(e) {}
+            }
+
             if (savedConfig) {
                 try {
                     const config = JSON.parse(savedConfig);
@@ -452,6 +465,7 @@
             };
             
             localStorage.setItem('firebaseConfig', JSON.stringify(config));
+            localStorage.setItem('lastFirebaseConfig', JSON.stringify(config));
             connectFirebase(config);
         });
 
@@ -466,6 +480,10 @@
                     firebase.initializeApp(config);
                 }
                 db = firebase.firestore();
+                
+                db.enablePersistence().catch((err) => {
+                    console.log("Offline persistence hatası:", err);
+                });
                 
                 // Firestore dinlemeye başla
                 listenTasks();
