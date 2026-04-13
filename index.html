@@ -76,7 +76,7 @@
             font-weight: 500;
         }
 
-        input[type="text"], input[type="date"], select, textarea {
+        input[type="text"], input[type="email"], input[type="password"], input[type="date"], select, textarea {
             width: 100%;
             padding: 0.75rem;
             border: 1px solid #ddd;
@@ -349,10 +349,22 @@
         <!-- Oturum Açma Ekranı -->
         <div id="auth-view" class="hidden">
             <h1 style="text-align: center; margin-bottom: 2rem;">Giriş Yap</h1>
-            <p style="text-align: center; color: var(--text-muted); margin-bottom: 2rem;">Görevlerinize ulaşmak için Google hesabınızla giriş yapın.</p>
+            <p style="text-align: center; color: var(--text-muted); margin-bottom: 2rem;">Görevlerinize ulaşmak için giriş yapın veya kayıt olun.</p>
             <div style="display: flex; flex-direction: column; gap: 1rem; max-width: 300px; margin: 0 auto;">
+                
+                <form id="email-auth-form" style="display: flex; flex-direction: column; gap: 1rem;">
+                    <input type="email" id="auth-email" placeholder="E-posta Adresi" required>
+                    <input type="password" id="auth-password" placeholder="Şifre (En az 6 karakter)" required minlength="6">
+                    <div style="display: flex; gap: 0.5rem;">
+                        <button type="submit" id="btn-email-login" style="flex: 1;">Giriş</button>
+                        <button type="button" id="btn-email-register" class="btn-secondary" style="flex: 1;">Kayıt Ol</button>
+                    </div>
+                </form>
+
+                <div style="text-align: center; margin: 0.5rem 0; color: var(--text-muted);">veya</div>
+
                 <button type="button" id="btn-google-login" style="background-color: #4285F4; color: white;">
-                    <span style="font-weight: bold; margin-right: 0.5rem; padding-right: 0.5rem; border-right: 1px solid rgba(255,255,255,0.3);">G</span> Google ile Giriş Yap
+                    <span style="font-weight: bold; margin-right: 0.5rem; padding-right: 0.5rem; border-right: 1px solid rgba(255,255,255,0.3);">G</span> Google ile Giriş
                 </button>
                 <div style="text-align: center; margin-top: 1.5rem; border-top: 1px solid #eee; padding-top: 1.5rem;">
                     <button type="button" id="btn-reset-config" class="btn-secondary" style="font-size: 0.85rem; padding: 0.5rem;">Firebase Ayarlarını Sıfırla (Admin)</button>
@@ -453,6 +465,11 @@
         const btnGoogleLogin = document.getElementById('btn-google-login');
         const btnResetConfig = document.getElementById('btn-reset-config');
         const userInfoEl = document.getElementById('user-info');
+        
+        const emailAuthForm = document.getElementById('email-auth-form');
+        const authEmailInput = document.getElementById('auth-email');
+        const authPasswordInput = document.getElementById('auth-password');
+        const btnEmailRegister = document.getElementById('btn-email-register');
 
         // --- Başlangıç Kontrolü ---
         function initApp() {
@@ -527,6 +544,53 @@
             if (confirm("Firebase ayarlarını silip bağlantıyı kesmek istediğinize emin misiniz?")) {
                 localStorage.removeItem('firebaseConfig');
                 location.reload();
+            }
+        });
+
+        emailAuthForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const email = authEmailInput.value.trim();
+            const password = authPasswordInput.value;
+            
+            try {
+                await firebase.auth().signInWithEmailAndPassword(email, password);
+                authEmailInput.value = '';
+                authPasswordInput.value = '';
+            } catch (error) {
+                console.error("Giriş hatası:", error);
+                if (error.code === 'auth/invalid-credential' || error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') {
+                    showToast("E-posta veya şifre hatalı.");
+                } else if (error.code === 'auth/invalid-email') {
+                    showToast("Geçersiz e-posta adresi.");
+                } else {
+                    showToast("Giriş yapılamadı: " + error.message);
+                }
+            }
+        });
+
+        btnEmailRegister.addEventListener('click', async () => {
+            if (!emailAuthForm.checkValidity()) {
+                emailAuthForm.reportValidity();
+                return;
+            }
+            
+            const email = authEmailInput.value.trim();
+            const password = authPasswordInput.value;
+
+            try {
+                await firebase.auth().createUserWithEmailAndPassword(email, password);
+                showToast("Kayıt başarılı, giriş yapıldı.");
+                authEmailInput.value = '';
+                authPasswordInput.value = '';
+            } catch (error) {
+                console.error("Kayıt hatası:", error);
+                if (error.code === 'auth/email-already-in-use') {
+                    showToast("Bu e-posta zaten kullanımda.");
+                } else if (error.code === 'auth/weak-password') {
+                    showToast("Şifre en az 6 karakter olmalıdır.");
+                } else {
+                    showToast("Kayıt olunamadı: " + error.message);
+                }
             }
         });
 
