@@ -307,6 +307,72 @@
             opacity: 1;
         }
 
+        /* Gantt Chart */
+        .gantt-wrapper {
+            overflow-x: auto;
+            border: 1px solid #eee;
+            border-radius: var(--radius);
+            background: var(--surface);
+            padding: 1rem;
+            margin-bottom: 2rem;
+        }
+        .gantt-grid {
+            display: grid;
+            gap: 0;
+            background: #eee;
+            border: 1px solid #ddd;
+            min-width: max-content;
+        }
+        .gantt-header-cell {
+            background: #faf8f5;
+            padding: 0.5rem;
+            border-bottom: 1px solid #ddd;
+            border-right: 1px solid #eee;
+            text-align: center;
+            font-size: 0.8rem;
+            font-weight: bold;
+            color: var(--text-muted);
+            position: sticky;
+            top: 0;
+            z-index: 2;
+        }
+        .gantt-task-cell {
+            background: white;
+            padding: 0.5rem;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            font-size: 0.9rem;
+            border-bottom: 1px solid #eee;
+            border-right: 1px solid #ddd;
+            position: sticky;
+            left: 0;
+            z-index: 1;
+        }
+        .gantt-cell {
+            background: white;
+            border-bottom: 1px solid #eee;
+            border-right: 1px solid #eee;
+        }
+        .gantt-bar {
+            border-radius: 4px;
+            padding: 0.25rem 0.5rem;
+            font-size: 0.8rem;
+            color: white;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            display: flex;
+            align-items: center;
+            margin: 4px 0;
+            cursor: default;
+            z-index: 1; /* Bar is above empty cells */
+        }
+        .gantt-bar.high { background-color: var(--high-color); }
+        .gantt-bar.med { background-color: var(--med-color); }
+        .gantt-bar.low { background-color: var(--low-color); }
+        .gantt-bar.completed { opacity: 0.5; }
+
         @media (max-width: 600px) {
             body { padding: 1rem 0.5rem; }
             #config-view, #app-view { padding: 1rem; }
@@ -383,11 +449,15 @@
                 <button type="button" id="btn-logout" class="btn-secondary" style="padding: 0.4rem 0.8rem;">Çıkış Yap</button>
             </div>
             
-            <div style="margin-bottom: 1.5rem; display: flex; justify-content: space-between; align-items: center;">
+            <div style="margin-bottom: 1.5rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
                 <div class="filters" id="task-filters">
                     <button class="filter-btn active" data-filter="all">Tümü</button>
                     <button class="filter-btn" data-filter="active">Aktif</button>
                     <button class="filter-btn" data-filter="done">Tamamlanan</button>
+                </div>
+                <div class="view-toggles filters" id="view-toggles">
+                    <button class="filter-btn active" data-view="list">Liste</button>
+                    <button class="filter-btn" data-view="gantt">Gantt Şeması</button>
                 </div>
             </div>
 
@@ -429,6 +499,11 @@
                     <div class="task-list" id="list-low"></div>
                 </div>
             </div>
+
+            <!-- Gantt Şeması Konteyneri -->
+            <div id="gantt-container" class="hidden">
+                 <div class="gantt-wrapper" id="gantt-wrapper"></div>
+            </div>
         </div>
     </div>
 
@@ -440,6 +515,7 @@
         let db = null;
         let tasksData = [];
         let currentFilter = 'all'; // all, active, done
+        let currentViewMode = 'list'; // list, gantt
         let currentUser = null;
         let unsubscribeTasks = null;
 
@@ -456,6 +532,11 @@
         const groupHigh = document.getElementById('group-high');
         const groupMed = document.getElementById('group-med');
         const groupLow = document.getElementById('group-low');
+        
+        const tasksContainer = document.getElementById('tasks-container');
+        const ganttContainer = document.getElementById('gantt-container');
+        const ganttWrapper = document.getElementById('gantt-wrapper');
+        const viewToggles = document.getElementById('view-toggles');
         
         const statsEl = document.getElementById('app-stats');
         const filtersContainer = document.getElementById('task-filters');
@@ -509,6 +590,16 @@
             configView.classList.add('hidden');
             appView.classList.add('hidden');
             authView.classList.remove('hidden');
+            
+            // Gizlilik: Auth ekranına dönüldüğünde eski verileri DOM'dan temizle
+            tasksData = [];
+            if (listHigh) listHigh.innerHTML = '';
+            if (listMed) listMed.innerHTML = '';
+            if (listLow) listLow.innerHTML = '';
+            if (groupHigh) groupHigh.classList.add('hidden');
+            if (groupMed) groupMed.classList.add('hidden');
+            if (groupLow) groupLow.classList.add('hidden');
+            if (statsEl) statsEl.innerText = 'Toplam: 0 | Tamamlanan: 0 | Bekleyen: 0';
         }
 
         function showAppView() {
@@ -650,22 +741,32 @@
 
             unsubscribeTasks = db.collection('tasks')
                 .where('userId', '==', currentUser.uid)
-                .orderBy('createdAt', 'desc')
                 .onSnapshot((snapshot) => {
                 tasksData = [];
                 snapshot.forEach(doc => {
                     tasksData.push({ id: doc.id, ...doc.data() });
                 });
+                
+                // Firestore Composite Index (Bileşik İndeks) hatasını önlemek için sıralamayı
+                // veritabanı yerine istemci tarafında (lokal olarak) yapıyoruz.
+                tasksData.sort((a, b) => {
+                    const timeA = a.createdAt && a.createdAt.toMillis ? a.createdAt.toMillis() : Date.now();
+                    const timeB = b.createdAt && b.createdAt.toMillis ? b.createdAt.toMillis() : Date.now();
+                    return timeB - timeA;
+                });
+                
                 renderTasks();
                 updateStats();
             }, (error) => {
                 console.error("Dinleme hatası:", error);
                 
                 // Hata Firebase indeksleriyle ilgili olabilir
-                if (error.message.includes('index')) {
-                     alert("Firestore Indeks Hatası: Lütfen Firestore console üzerinde 'createdAt' için indeks oluşturun. Hata detayı konsolda.");
+                if (error.code === 'failed-precondition' && error.message.toLowerCase().includes('index')) {
+                     alert("Firestore Indeks Hatası: Lütfen tarayıcı konsolunu (F12) açın ve oradaki kırmızı hata mesajının sonundaki Firebase linkine (URL'ye) tıklayarak eksik indeksi oluşturun.");
+                } else if (error.message.toLowerCase().includes('indexeddb')) {
+                     console.warn("Gizli sekme veya tarayıcı ayarları nedeniyle çevrimdışı önbellekleme kullanılamıyor.");
                 } else if (error.code === 'permission-denied') {
-                     showToast("İzin hatası: Test modu kapalı olabilir.");
+                     showToast("İzin hatası: Oku/yazma kurallarınız veya erişiminiz kısıtlı.");
                 } else {
                      showToast("Veriler alınırken hata oluştu.");
                 }
@@ -725,9 +826,26 @@
         // --- UI Rendering ---
         filtersContainer.addEventListener('click', (e) => {
             if (e.target.classList.contains('filter-btn')) {
-                document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
+                filtersContainer.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
                 e.target.classList.add('active');
                 currentFilter = e.target.getAttribute('data-filter');
+                renderTasks();
+            }
+        });
+
+        viewToggles.addEventListener('click', (e) => {
+            if (e.target.classList.contains('filter-btn')) {
+                viewToggles.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
+                e.target.classList.add('active');
+                currentViewMode = e.target.getAttribute('data-view');
+                
+                if (currentViewMode === 'gantt') {
+                    tasksContainer.classList.add('hidden');
+                    ganttContainer.classList.remove('hidden');
+                } else {
+                    ganttContainer.classList.add('hidden');
+                    tasksContainer.classList.remove('hidden');
+                }
                 renderTasks();
             }
         });
@@ -814,6 +932,84 @@
             groupHigh.classList.toggle('hidden', highs.length === 0);
             groupMed.classList.toggle('hidden', meds.length === 0);
             groupLow.classList.toggle('hidden', lows.length === 0);
+
+            if (currentViewMode === 'gantt') {
+                renderGanttChart(filteredTasks);
+            }
+        }
+
+        function renderGanttChart(tasks) {
+            if (tasks.length === 0) {
+                ganttWrapper.innerHTML = '<p style="color: var(--text-muted); padding: 2rem; text-align: center;">Gantt şemasında gösterilecek görev bulunamadı.</p>';
+                return;
+            }
+
+            let minTimestamp = Infinity;
+            let maxTimestamp = -Infinity;
+            const oneDayMs = 24 * 60 * 60 * 1000;
+
+            const ganttData = tasks.map(t => {
+                let startMs = Date.now();
+                if (t.createdAt && t.createdAt.toMillis) {
+                    startMs = t.createdAt.toMillis();
+                }
+
+                let endMs = startMs;
+                if (t.due) {
+                    const dueParts = t.due.split('-');
+                    if (dueParts.length === 3) {
+                        endMs = new Date(dueParts[0], dueParts[1] - 1, dueParts[2]).getTime();
+                    }
+                }
+                
+                const startD = new Date(startMs); startD.setHours(0,0,0,0);
+                const endD = new Date(endMs); endD.setHours(0,0,0,0);
+
+                if (endD < startD) {
+                    endD.setTime(startD.getTime());
+                }
+
+                if (startD.getTime() < minTimestamp) minTimestamp = startD.getTime();
+                if (endD.getTime() > maxTimestamp) maxTimestamp = endD.getTime();
+
+                return { ...t, start: startD.getTime(), end: endD.getTime() };
+            });
+
+            minTimestamp -= oneDayMs * 2;
+            maxTimestamp += oneDayMs * 3;
+
+            const totalDays = Math.max(7, Math.ceil((maxTimestamp - minTimestamp) / oneDayMs));
+
+            let html = `<div class="gantt-grid" style="grid-template-columns: 200px repeat(${totalDays}, minmax(40px, 1fr))">`;
+
+            html += `<div class="gantt-header-cell" style="grid-column: 1; grid-row: 1;">Görevler</div>`;
+            for(let i = 0; i < totalDays; i++) {
+                const dayDate = new Date(minTimestamp + (i * oneDayMs));
+                const dayStr = dayDate.toLocaleDateString('tr-TR', { day: '2-digit', month: 'short' });
+                html += `<div class="gantt-header-cell" style="grid-column: ${i+2}; grid-row: 1;">${dayStr}</div>`;
+            }
+
+            ganttData.forEach((task, index) => {
+                const rowIndex = index + 2;
+                
+                const taskDisplay = escapeHTML(task.title);
+                html += `<div class="gantt-task-cell" style="grid-row: ${rowIndex}; grid-column: 1;" title="${taskDisplay}">${task.done ? '<span style="text-decoration:line-through;color:#999">' : ''}${taskDisplay}${task.done ? '</span>' : ''}</div>`;
+
+                for(let i = 0; i < totalDays; i++) {
+                     html += `<div class="gantt-cell" style="grid-row: ${rowIndex}; grid-column: ${i+2};"></div>`;
+                }
+
+                const startCol = Math.max(2, Math.ceil((task.start - minTimestamp) / oneDayMs) + 2);
+                const endCol = Math.min(totalDays + 2, Math.ceil((task.end - minTimestamp) / oneDayMs) + 3);
+
+                const colorClass = task.priority === 'high' ? 'high' : (task.priority === 'med' ? 'med' : 'low');
+                const doneClass = task.done ? 'completed' : '';
+
+                html += `<div class="gantt-bar ${colorClass} ${doneClass}" style="grid-row: ${rowIndex}; grid-column: ${startCol} / ${endCol};" title="${taskDisplay}\nBaşlangıç: ${new Date(task.start).toLocaleDateString('tr-TR')}\nBitiş: ${new Date(task.end).toLocaleDateString('tr-TR')}">${taskDisplay}</div>`;
+            });
+
+            html += `</div>`;
+            ganttWrapper.innerHTML = html;
         }
 
         // --- Araçlar ---
