@@ -270,21 +270,78 @@
             word-wrap: break-word;
         }
 
-        .btn-delete {
-            background: transparent;
-            color: #ccc;
-            padding: 0.5rem;
-            border-radius: 5%;
-            font-size: 1rem;
-            line-height: 1;
+        .task-actions {
             margin-left: auto;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
             flex-shrink: 0;
+        }
+        .btn-delete, .btn-edit {
+            background: transparent;
+            padding: 0.5rem;
+            border-radius: 8px;
+            font-size: 0.95rem;
+            line-height: 1;
             cursor: pointer;
             transition: all 0.2s;
+            border: 1px solid transparent;
         }
+        .btn-delete { color: #ccc; }
         .btn-delete:hover {
             color: var(--high-color);
             background: #fff0ed;
+            border-color: #ffd8d1;
+        }
+        .btn-edit { color: #aaa; }
+        .btn-edit:hover {
+            color: var(--primary);
+            background: #f0f0f0;
+            border-color: #ddd;
+        }
+
+        /* Modal for Categories */
+        .modal-overlay {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 2000;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s;
+        }
+        .modal-overlay.show { opacity: 1; pointer-events: auto; }
+        .modal-content {
+            background: var(--surface);
+            padding: 2rem;
+            border-radius: var(--radius);
+            width: 90%;
+            max-width: 400px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+            transform: translateY(20px);
+            transition: transform 0.2s;
+        }
+        .modal-overlay.show .modal-content { transform: translateY(0); }
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+        }
+        .cat-item {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 0.5rem; border-bottom: 1px solid #eee;
+        }
+        .cat-badge {
+            background: #eee;
+            color: #555;
+            padding: 0.15rem 0.5rem;
+            border-radius: 12px;
+            font-size: 0.8rem;
+            border: 1px solid #ddd;
         }
 
         /* Toast */
@@ -377,7 +434,7 @@
             body { padding: 1rem 0.5rem; }
             #config-view, #app-view { padding: 1rem; }
             .add-task-grid { grid-template-columns: 1fr; }
-            .filters { display: none; } /* Hide tabs on very small screens */
+            /* .filters { display: none; } removed to keep Gantt button visible on mobile */
             .header-actions { flex-direction: column; align-items: flex-start; }
             h1 { font-size: 2rem; }
         }
@@ -446,7 +503,10 @@
                     <div class="stats" id="app-stats">Toplam: 0 | Tamamlanan: 0 | Bekleyen: 0</div>
                     <div id="user-info" style="margin-top: 0.5rem; font-size: 0.85rem; color: var(--text-muted);"></div>
                 </div>
-                <button type="button" id="btn-logout" class="btn-secondary" style="padding: 0.4rem 0.8rem;">Çıkış Yap</button>
+                <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                    <button type="button" class="btn-secondary" style="padding: 0.4rem 0.8rem;" onclick="openCategoryModal()">Kategorileri Yönet</button>
+                    <button type="button" id="btn-logout" class="btn-secondary" style="padding: 0.4rem 0.8rem;">Çıkış Yap</button>
+                </div>
             </div>
             
             <div style="margin-bottom: 1.5rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
@@ -454,6 +514,11 @@
                     <button class="filter-btn active" data-filter="all">Tümü</button>
                     <button class="filter-btn" data-filter="active">Aktif</button>
                     <button class="filter-btn" data-filter="done">Tamamlanan</button>
+                    
+                    <select id="category-filter" style="width: auto; height: 35px; padding: 0 1rem; border-radius: 20px; border-color: #ddd; margin-left: 0.5rem; background: transparent; color: var(--text-muted); cursor: pointer;">
+                        <option value="all">Tüm Kategoriler</option>
+                        <option value="uncategorized">Kategorisiz</option>
+                    </select>
                 </div>
                 <div class="view-toggles filters" id="view-toggles">
                     <button class="filter-btn active" data-view="list">Liste</button>
@@ -477,11 +542,19 @@
                     <div class="form-group">
                         <input type="date" id="task-due">
                     </div>
+                    <div class="form-group">
+                        <select id="task-category">
+                            <option value="">Kategori Yok</option>
+                        </select>
+                    </div>
                     <div class="form-group full-width" style="margin-bottom: 0;">
                         <input type="text" id="task-note" placeholder="Not/Açıklama (opsiyonel)">
                     </div>
                 </div>
-                <button type="submit">Görev Ekle</button>
+                <div style="display: flex; gap: 0.5rem;">
+                    <button type="submit" id="btn-submit-task">Görev Ekle</button>
+                    <button type="button" id="btn-cancel-edit" class="btn-secondary hidden" onclick="cancelEdit()">İptal</button>
+                </div>
             </form>
 
             <!-- Görev Listeleri (Öncelik Gruplu) -->
@@ -507,6 +580,21 @@
         </div>
     </div>
 
+    <!-- Kategori Yönetimi Modal -->
+    <div id="category-modal" class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 style="font-size: 1.5rem; margin-bottom: 0;">Kategorileri Yönet</h2>
+                <button type="button" class="btn-secondary" style="padding: 0.3rem 0.6rem; border: none; font-size: 1.2rem;" onclick="closeCategoryModal()">✕</button>
+            </div>
+            <form id="add-category-form" style="display: flex; gap: 0.5rem; margin-bottom: 1.5rem;">
+                <input type="text" id="new-category-name" placeholder="Yeni kategori adı" required style="flex: 1; padding: 0.5rem;">
+                <button type="submit" style="padding: 0.5rem 1rem;">Ekle</button>
+            </form>
+            <div id="category-modal-list" style="max-height: 250px; overflow-y: auto;"></div>
+        </div>
+    </div>
+
     <!-- Toast Bildirimi -->
     <div id="toast" class="toast"></div>
 
@@ -514,10 +602,14 @@
         // --- Durum (State) ---
         let db = null;
         let tasksData = [];
+        let categoriesData = [];
         let currentFilter = 'all'; // all, active, done
+        let currentCategoryFilter = 'all';
         let currentViewMode = 'list'; // list, gantt
         let currentUser = null;
         let unsubscribeTasks = null;
+        let unsubscribeCategories = null;
+        let editingTaskId = null;
 
         // --- DOM Elementleri ---
         const configView = document.getElementById('config-view');
@@ -540,8 +632,10 @@
         
         const statsEl = document.getElementById('app-stats');
         const filtersContainer = document.getElementById('task-filters');
+        const categoryFilterEl = document.getElementById('category-filter');
         const toastEl = document.getElementById('toast');
         const btnLogout = document.getElementById('btn-logout');
+        const taskCategoryEl = document.getElementById('task-category');
         
         const btnGoogleLogin = document.getElementById('btn-google-login');
         const btnResetConfig = document.getElementById('btn-reset-config');
@@ -593,6 +687,9 @@
             
             // Gizlilik: Auth ekranına dönüldüğünde eski verileri DOM'dan temizle
             tasksData = [];
+            categoriesData = [];
+            editingTaskId = null;
+            if (taskForm) taskForm.reset();
             if (listHigh) listHigh.innerHTML = '';
             if (listMed) listMed.innerHTML = '';
             if (listLow) listLow.innerHTML = '';
@@ -712,11 +809,16 @@
                     if (user) {
                         userInfoEl.innerText = "Giriş yapıldı: " + user.email;
                         showAppView();
+                        listenCategories();
                         listenTasks();
                     } else {
                         if (unsubscribeTasks) {
                             unsubscribeTasks();
                             unsubscribeTasks = null;
+                        }
+                        if (unsubscribeCategories) {
+                            unsubscribeCategories();
+                            unsubscribeCategories = null;
                         }
                         showAuthView();
                     }
@@ -773,36 +875,128 @@
             });
         }
 
+        // --- Kategori Dinleme ---
+        function listenCategories() {
+            if (!currentUser) return;
+            if (unsubscribeCategories) unsubscribeCategories();
+
+            unsubscribeCategories = db.collection('categories')
+                .where('userId', '==', currentUser.uid)
+                .onSnapshot(snapshot => {
+                    categoriesData = [];
+                    snapshot.forEach(doc => categoriesData.push({ id: doc.id, ...doc.data() }));
+                    
+                    // Display alphabetically
+                    categoriesData.sort((a,b) => a.name.localeCompare(b.name));
+                    
+                    updateCategoryDropdowns();
+                    renderCategoryModalList();
+                    renderTasks(); 
+                }, error => {
+                    console.error("Kategori dinleme hatası:", error);
+                });
+        }
+
+        function updateCategoryDropdowns() {
+            if(!taskCategoryEl) return;
+            const currentSelected = taskCategoryEl.value;
+            taskCategoryEl.innerHTML = '<option value="">Kategori Yok</option>';
+            categoriesData.forEach(cat => {
+                const opt = document.createElement('option');
+                opt.value = cat.id; opt.innerText = cat.name;
+                taskCategoryEl.appendChild(opt);
+            });
+            taskCategoryEl.value = currentSelected || ''; 
+
+            if(!categoryFilterEl) return;
+            const currentFilterVal = categoryFilterEl.value;
+            categoryFilterEl.innerHTML = '<option value="all">Tüm Kategoriler</option><option value="uncategorized">Kategorisiz</option>';
+            categoriesData.forEach(cat => {
+                const opt = document.createElement('option');
+                opt.value = cat.id; opt.innerText = cat.name;
+                categoryFilterEl.appendChild(opt);
+            });
+
+            if (!categoriesData.find(c => c.id === currentFilterVal) && currentFilterVal !== 'all' && currentFilterVal !== 'uncategorized') {
+                categoryFilterEl.value = 'all';
+                currentCategoryFilter = 'all';
+            } else {
+                categoryFilterEl.value = currentFilterVal;
+            }
+        }
+
         // --- Görev İşlemleri ---
         taskForm.addEventListener('submit', async (e) => {
             e.preventDefault();
+            
+            const btnSubmit = document.getElementById('btn-submit-task');
+            btnSubmit.disabled = true;
+            btnSubmit.innerText = editingTaskId ? "Güncelleniyor..." : "Ekleniyor...";
+
             const titleEl = document.getElementById('task-title');
             const prioEl = document.getElementById('task-priority');
             const dueEl = document.getElementById('task-due');
             const noteEl = document.getElementById('task-note');
 
-            const newTask = {
+            const taskData = {
                 title: titleEl.value.trim(),
                 priority: prioEl.value,
                 due: dueEl.value || null,
                 note: noteEl.value.trim() || null,
-                done: false,
-                userId: currentUser.uid,
-                createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                categoryId: taskCategoryEl.value || null
             };
 
             try {
-                await db.collection('tasks').add(newTask);
-                showToast("Görev eklendi.");
-                taskForm.reset();
-                prioEl.value = 'med'; // varsayılan
+                if (editingTaskId) {
+                    await db.collection('tasks').doc(editingTaskId).update(taskData);
+                    showToast("Görev güncellendi.");
+                    cancelEdit();
+                } else {
+                    taskData.done = false;
+                    taskData.userId = currentUser.uid;
+                    taskData.createdAt = firebase.firestore.FieldValue.serverTimestamp();
+                    
+                    await db.collection('tasks').add(taskData);
+                    showToast("Görev eklendi.");
+                    taskForm.reset();
+                    prioEl.value = 'med'; // varsayılan
+                }
             } catch (error) {
-                console.error("Ekleme hatası:", error);
-                showToast("Görev eklenemedi.");
+                console.error("İşlem hatası:", error);
+                showToast(editingTaskId ? "Görev güncellenemedi." : "Görev eklenemedi.");
+            } finally {
+                btnSubmit.disabled = false;
+                btnSubmit.innerText = editingTaskId ? "Görevi Güncelle" : "Görev Ekle";
             }
         });
 
         // Global context için method ataması
+        window.editTask = function(id) {
+            const task = tasksData.find(t => t.id === id);
+            if (!task) return;
+            
+            editingTaskId = id;
+            document.getElementById('task-title').value = task.title;
+            document.getElementById('task-priority').value = task.priority;
+            document.getElementById('task-due').value = task.due || '';
+            document.getElementById('task-note').value = task.note || '';
+            if(taskCategoryEl) taskCategoryEl.value = task.categoryId || '';
+            
+            document.getElementById('btn-submit-task').innerText = "Görevi Güncelle";
+            document.getElementById('btn-cancel-edit').classList.remove('hidden');
+            
+            window.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
+        }
+
+        window.cancelEdit = function() {
+            editingTaskId = null;
+            taskForm.reset();
+            document.getElementById('task-priority').value = 'med';
+            if(taskCategoryEl) taskCategoryEl.value = '';
+            document.getElementById('btn-submit-task').innerText = "Görev Ekle";
+            document.getElementById('btn-cancel-edit').classList.add('hidden');
+        }
+
         window.toggleTask = async function(id, currentStatus) {
             try {
                 await db.collection('tasks').doc(id).update({ done: !currentStatus });
@@ -832,6 +1026,71 @@
                 renderTasks();
             }
         });
+
+        if (categoryFilterEl) {
+            categoryFilterEl.addEventListener('change', (e) => {
+                currentCategoryFilter = e.target.value;
+                renderTasks();
+            });
+        }
+
+        // --- Kategori Yönetim Modalı İşlemleri ---
+        window.openCategoryModal = function() {
+            document.getElementById('category-modal').classList.add('show');
+            renderCategoryModalList();
+        }
+        window.closeCategoryModal = function() {
+            document.getElementById('category-modal').classList.remove('show');
+        }
+        
+        document.getElementById('add-category-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const input = document.getElementById('new-category-name');
+            const name = input.value.trim();
+            if (!name) return;
+            
+            try {
+                await db.collection('categories').add({ name, userId: currentUser.uid, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+                input.value = '';
+            } catch (error) {
+                console.error("Kategori ekleme hatası:", error);
+                showToast("Kategori eklenemedi.");
+            }
+        });
+        
+        window.deleteCategory = async function(id) {
+            if (!confirm("Bunu sildiğinizde ilgili görevleriniz 'Kategorisiz' olacaktır. Emin misiniz?")) return;
+            try {
+                const tasksToUpdate = tasksData.filter(t => t.categoryId === id);
+                const batch = db.batch();
+                tasksToUpdate.forEach(t => {
+                    const ref = db.collection('tasks').doc(t.id);
+                    batch.update(ref, { categoryId: null });
+                });
+                await batch.commit(); 
+                
+                await db.collection('categories').doc(id).delete();
+                showToast("Kategori silindi.");
+            } catch (error) {
+                console.error("Kategori silme hatası:", error);
+                showToast("Silinemedi. Hata konsolda.");
+            }
+        }
+
+        function renderCategoryModalList() {
+            const listEl = document.getElementById('category-modal-list');
+            if (!listEl) return;
+            if (categoriesData.length === 0) {
+                listEl.innerHTML = '<p style="color:var(--text-muted);font-size:0.9rem;">Henüz bir kategori eklenmemiş.</p>';
+                return;
+            }
+            listEl.innerHTML = categoriesData.map(c => `
+                <div class="cat-item">
+                    <span>${escapeHTML(c.name)}</span>
+                    <button class="btn-delete" style="padding:0.2rem;font-size:0.9rem;border-radius:4px;" onclick="deleteCategory('${c.id}')">✕</button>
+                </div>
+            `).join('');
+        }
 
         viewToggles.addEventListener('click', (e) => {
             if (e.target.classList.contains('filter-btn')) {
@@ -891,6 +1150,12 @@
             if (task.priority === 'high') { badgeClass = 'badge-high'; badgeText = 'Yüksek'; }
             if (task.priority === 'med') { badgeClass = 'badge-med'; badgeText = 'Orta'; }
 
+            let catBadgeStr = '';
+            if (task.categoryId) {
+                 const cat = categoriesData.find(c => c.id === task.categoryId);
+                 if (cat) catBadgeStr = `<span class="cat-badge">📁 ${escapeHTML(cat.name)}</span>`;
+            }
+
             const overdue = !task.done && isOverdue(task.due);
             const dateStr = task.due ? `<span class="${overdue ? 'text-overdue' : ''}">📅 ${task.due} ${overdue ? '(Gecikmiş)' : ''}</span>` : '';
             const noteStr = escNote ? `<div class="task-note">${escNote}</div>` : '';
@@ -902,11 +1167,15 @@
                         <div class="task-title ${task.done ? 'completed-text' : ''}">${escTitle}</div>
                         <div class="task-meta">
                             <span class="badge ${badgeClass}">${badgeText}</span>
+                            ${catBadgeStr}
                             ${dateStr}
                         </div>
                         ${noteStr}
                     </div>
-                    <button class="btn-delete" title="Sil" onclick="deleteTask('${task.id}')">✕ Sil</button>
+                    <div class="task-actions">
+                        <button class="btn-edit" title="Düzenle" onclick="editTask('${task.id}')">✎</button>
+                        <button class="btn-delete" title="Sil" onclick="deleteTask('${task.id}')">✕</button>
+                    </div>
                 </div>
             `;
         }
@@ -915,9 +1184,15 @@
             let filteredTasks = tasksData;
             
             if (currentFilter === 'active') {
-                filteredTasks = tasksData.filter(t => !t.done);
+                filteredTasks = filteredTasks.filter(t => !t.done);
             } else if (currentFilter === 'done') {
-                filteredTasks = tasksData.filter(t => t.done);
+                filteredTasks = filteredTasks.filter(t => t.done);
+            }
+
+            if (currentCategoryFilter === 'uncategorized') {
+                filteredTasks = filteredTasks.filter(t => !t.categoryId);
+            } else if (currentCategoryFilter !== 'all') {
+                filteredTasks = filteredTasks.filter(t => t.categoryId === currentCategoryFilter);
             }
 
             const highs = filteredTasks.filter(t => t.priority === 'high');
